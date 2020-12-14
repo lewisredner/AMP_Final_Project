@@ -13,6 +13,8 @@ import matplotlib
 import time
 from dijkstar import Graph, find_path
 import imageio
+import os
+from pathlib import Path
 
 
 class RRT_Algorithm:
@@ -36,9 +38,11 @@ class RRT_Algorithm:
         self.TV = [self.qstart]
         self.TE = []
 
+
     #################################################################################################################################################
     # Goal Biased RRT algorithm
     def RRT_algo(self):
+        self.solution_found = 0
         # iterate while there is no solution
         for i in range(self.n):
             # generate a random sample with probability of pgoal of being goal
@@ -57,11 +61,10 @@ class RRT_Algorithm:
                 self.TV.append(qnew)
                 # check if the distance from qnew to qgoal is close to 0
                 dist = math.sqrt((qnew[0] - self.qgoal[0]) ** 2 + (qnew[1] - self.qgoal[1]) ** 2)
-                if len(self.TV) > 50000:
-                    return 0, 0
 
                 if dist <= self.eps:
                     # if it is then return the solution path from root to q new
+                    self.solution_found = 1
                     return self.TV, self.TE
         return self.TV, self.TE
 
@@ -69,13 +72,20 @@ class RRT_Algorithm:
     # function to handle the motion of the robot through the workspace and dynamic obstacles
     def motion_updater(self):
         # get the current robot position
-        current_robot_pos = self.robot_positions[0]
+        try:
+            current_robot_pos = self.robot_positions[0]
+        except:
+            print("No Solution")
+            return
         # continue updating the motion of the things until we reach goal
         while current_robot_pos != self.qgoal:
 
             # get current position of robot
-            current_robot_pos = self.robot_positions[0]
-
+            try:
+                current_robot_pos = self.robot_positions[0]
+            except:
+                print('No Solution')
+                return
             # delete the old node as we don't need it anymore
             self.robot_positions.pop(0)
             viability = True
@@ -96,7 +106,7 @@ class RRT_Algorithm:
             # if viable, then update robot position
             if viability:
                 # move the robot forward along its path
-                current_robot_pos = self.robot_positions[0]
+                #current_robot_pos = self.robot_positions[0]
                 # plot this
                 self.plotting(self.nodes, self.total_cost)
                 # check for end
@@ -199,6 +209,8 @@ class RRT_Algorithm:
     def graph_search(self):
         # set up the graph
         graph = Graph()
+        self.nodes = 0
+        self.total_cost = 0
         # add edges
         for i in range(len(self.TE)):
             # pdb.set_trace()
@@ -244,7 +256,7 @@ class RRT_Algorithm:
                 interpolateds = [x_int, y_int]
 
             # append goal
-        if len(self.robot_positions) > 1:
+        if self.solution_found == 1:
             self.robot_positions.append(self.qgoal)
             # self.robot_positions.append(np.linspace(edge[0],edge[1], num = self.speed/50,endpoint=True,retstep=True))
 
@@ -291,7 +303,10 @@ class RRT_Algorithm:
         # PLOT START, END AND CURRENT POINTS
         start = plt.Circle(self.qstart, 0.1, color='r')
         end = plt.Circle(self.qgoal, 0.1, color='g')
-        curr = plt.Circle(self.robot_positions[0], 0.25, color='y')
+        if len(self.robot_positions) == 0:
+            curr = plt.Circle(self.qgoal, 0.25, color='y')
+        else:
+            curr = plt.Circle(self.robot_positions[0], 0.25, color='y')
         ax.add_artist(start)
         ax.add_artist(end)
         ax.add_artist(curr)
@@ -319,11 +334,14 @@ class RRT_Algorithm:
         plt.legend((start, end, line, points), ('Start', 'End', 'Path', 'Sample Points'), loc=1)
 
         dist = round(total_cost, 2)
-        title_boi = 'Goal Biased RRT Algorithm' + ', Distance: ' + str(dist)
+        title_boi = 'Goal Biased RRT Algorithm' + ', Distance: ' + str(self.total_cost)
         plt.title(title_boi)
 
         # show
-        temp = "plan" + str(self.counter) + ".png"
+        if self.counter < 10:
+            temp = "trajectory_plots/plan0" + str(self.counter) + ".png"
+        else:
+            temp = "trajectory_plots/plan" + str(self.counter) + ".png"
         fig.savefig(temp)
         self.counter = self.counter + 1
 
@@ -364,9 +382,9 @@ class Obstacles:
 
                 # find the vertices (lower left, upper left, upper right, lower right)
                 v1 = [x_rand - x_size / 2, y_rand - y_size / 2]
-                v2 = [x_rand - x_size / 2, y_rand + y_size / 2]
+                v2 = [x_rand + x_size / 2, y_rand - y_size / 2]
                 v3 = [x_rand + x_size / 2, y_rand + y_size / 2]
-                v4 = [x_rand + x_size / 2, y_rand - y_size / 2]
+                v4 = [x_rand - x_size / 2, y_rand + y_size / 2]
 
                 # create the shapely object
                 static_obs = Polygon([v1,v2,v3,v4])
@@ -398,9 +416,9 @@ class Obstacles:
 
                 # find the vertices (lower left, upper left, upper right, lower right)
                 v1 = [x_rand - x_size / 2, y_rand - y_size / 2]
-                v2 = [x_rand - x_size / 2, y_rand + y_size / 2]
+                v2 = [x_rand + x_size / 2, y_rand - y_size / 2]
                 v3 = [x_rand + x_size / 2, y_rand + y_size / 2]
-                v4 = [x_rand + x_size / 2, y_rand - y_size / 2]
+                v4 = [x_rand - x_size / 2, y_rand + y_size / 2]
 
                 # create the shapely object
                 dynamic_obs = Polygon([v1, v2, v3, v4])
@@ -470,11 +488,11 @@ class Obstacles:
 
 
 # MAIN SCRIPT
-no_dynamics = 2
-dyn_speeds = 1
+no_dynamics = 4
+dyn_speeds = 2
 dyn_size_x = [1,2]
 dyn_size_y = [1,2]
-no_statics = 6
+no_statics = 2
 static_size_x = [2,4]
 static_size_y = [2,4]
 obs = Obstacles(no_dynamics, dyn_speeds, dyn_size_x, dyn_size_y, no_statics, static_size_x, static_size_y)
@@ -486,13 +504,13 @@ static_obs = obs.create_statics(xbounds, ybounds, start, goal)
 dynamic_obs = obs.create_dynamics(xbounds, ybounds, start, goal)
 # number of samples and radius of connectivity
 n = 500
-r = 0.5
+r = 1
 # probability of reaching goal
 p_goal = 0.05
 # set eps
 eps = 0.1
 # set the robot and obstacle speeds [m/s]
-speed = 4
+speed = 3
 
 # instantiate the solving class
 rrt = RRT_Algorithm(n, r, p_goal, eps, xbounds, ybounds, start, goal, speed, static_obs, dynamic_obs, obs)
@@ -505,9 +523,9 @@ rrt.plotting(nodes, total_cost)
 # update the motion by propagating the robot position
 rrt.motion_updater()
 # now plot the gif from all the images created
-# folder = 'pics'
-# files = [f"{folder}\\{file}" for file in os.listdir(folder)]
-#
-# images = [imageio.imread(file) for file in files]
-# imageio.mimwrite('movie.gif', images, fps=1)
-
+image_path = Path('trajectory_plots')
+images = list(image_path.glob('*.png'))
+image_list = []
+for file_name in images:
+    image_list.append(imageio.imread(file_name))
+imageio.mimwrite('final_motion.gif', image_list, duration = 1)
