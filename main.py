@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import time
 from dijkstar import Graph, find_path
+import imageio
 
 
 class RRT_Algorithm:
@@ -60,32 +61,9 @@ class RRT_Algorithm:
                     return 0, 0
 
                 if dist <= self.eps:
-                    # interpolate all of the vertices to make a series of points that the robot can follow
-                    self.robot_positions = []
-                    for edge in self.TE:
-                        # take each edge and interpolate a distance equivalent 1/50th of the robot speed per second
-                        diff_x = edge[1][0] - edge[0][0]
-                        diff_y = edge[1][1] - edge[0][1]
-                        dist_speed = self.speed * 1/10 # m/s * s = m
-                        # now find number of points
-                        num_points = int(diff_x/dist_speed)
-                        # interpolate using these points
-                        x_int = edge[0][0]
-                        y_int = edge[0][1]
-                        interpolateds = [x_int, y_int]
-                        for i in range(num_points):
-                            # append the robot positions
-                            self.robot_positions.append(interpolateds)
-                            # add the points in by moving the direction amount calculated in x and y
-                            x_int = interpolateds[0]+dist_speed
-                            y_int = interpolateds[1]+dist_speed
-                            interpolateds = [x_int, y_int]
-
-
-                        #self.robot_positions.append(np.linspace(edge[0],edge[1], num = self.speed/50,endpoint=True,retstep=True))
-
                     # if it is then return the solution path from root to q new
                     return self.TV, self.TE
+        return self.TV, self.TE
 
     ########################################################################################################################
     # function to handle the motion of the robot through the workspace and dynamic obstacles
@@ -121,10 +99,16 @@ class RRT_Algorithm:
                 current_robot_pos = self.robot_positions[0]
                 # plot this
                 self.plotting(self.nodes, self.total_cost)
+                # check for end
+
             # if not, then make new RRT path
             else:
                 # if no path exists, recalculate the motion path
+                    # reset the motion path
                 self.TV = [current_robot_pos.copy()]
+                self.TE = []
+                # set the new start point to the current point
+                self.qstart = current_robot_pos.copy()
                 [self.TV, self.TE] = self.RRT_algo()
 
                 # now now search for the path
@@ -136,8 +120,6 @@ class RRT_Algorithm:
                 # and run the motion updater again with our new motion plan
                 self.motion_updater()
 
-
-            # continue in loop until no solution reached 10 times, then return no solution
 
 
 
@@ -184,7 +166,8 @@ class RRT_Algorithm:
     def isSubpathCollisionFree(self, qnear, path):
         # pdb.set_trace()
         # make path into a subpath by taking one step along the path
-        start_point = [path.interpolate(0).xy[0][0], path.interpolate(0).xy[1][0]]
+        start_point = qnear
+        #start_point = [path.interpolate(0).xy[0][0], path.interpolate(0).xy[1][0]]
         step_point = [path.interpolate(self.r).xy[0][0], path.interpolate(self.r).xy[1][0]]
         # make the subpath
         subpath = LineString([Point(start_point[0], start_point[1]), Point([step_point[0], step_point[1]])])
@@ -199,14 +182,14 @@ class RRT_Algorithm:
             for i in range(len(polys)):
                 if polys[i].intersects(subpath):
                     iscollisionfree = False
-                    break
+                    return iscollisionfree
         if self.dynamics is not None:
             polys = self.dynamics
             # repeat with dynamic obstacles
             for i in range(len(polys)):
                 if polys[i].intersects(subpath):
                     iscollisionfree = False
-                    break
+                    return iscollisionfree
 
         return iscollisionfree
 
@@ -231,6 +214,40 @@ class RRT_Algorithm:
         temp = find_path(graph, 0, len(self.TV) - 1)
         self.nodes = temp[0]
         self.total_cost = temp[3]
+
+        # now that we have the final path of the robot, we need to extract the ideal robot positions
+        # interpolate all of the vertices to make a series of points that the robot can follow
+        self.robot_positions = []
+        # iterate over each node in the final path and connect between them
+        for i in range(len(self.nodes)-1):
+            # take the first and second nodes
+            from_node = self.TV[self.nodes[i]]
+            to_node = self.TV[self.nodes[i+1]]
+
+            # take each edge and interpolate a distance equivalent 1/10th of the robot speed per second
+            diff_x = to_node[0] - from_node[0]
+            diff_y = to_node[1] - from_node[1]
+            dist_speed = self.speed * 1 / 10  # m/s * s = m
+            # now find number of points from distance between points and speed
+            dist_covered = math.sqrt(diff_x**2 + diff_y **2)
+            num_points = round(dist_covered / dist_speed)
+            # interpolate using these points
+            x_int = from_node[0]
+            y_int = from_node[1]
+            interpolateds = [x_int, y_int]
+            for i in range(num_points):
+                # append the robot positions
+                self.robot_positions.append(interpolateds)
+                # add the points in by moving the direction amount calculated in x and y
+                x_int = interpolateds[0] + diff_x/num_points
+                y_int = interpolateds[1] + diff_y/num_points
+                interpolateds = [x_int, y_int]
+
+            # append goal
+        if len(self.robot_positions) > 1:
+            self.robot_positions.append(self.qgoal)
+            # self.robot_positions.append(np.linspace(edge[0],edge[1], num = self.speed/50,endpoint=True,retstep=True))
+
         return self.nodes, self.total_cost
 
     ###################################################################################################################
@@ -361,21 +378,6 @@ class Obstacles:
 
         return self.statics
 
-    ###################################################################################
-    # create safe and dangerous space
-    def create_spaces(self):
-        # iterate over number of safe spaces
-
-        # select random point
-
-        # create shapely object using area size around that point
-
-        # iterate over number of dangerous spaces
-
-        # repeat procedure above, make sure there is no overlap with a safe space
-
-
-        return
 
     ###################################################################################
     # create the dynamic objects
@@ -405,11 +407,6 @@ class Obstacles:
 
                 # check if the obstacle intersects goal
                 if not dynamic_obs.intersects(Point(start)) and not dynamic_obs.intersects(Point(goal)):
-                    # check if the dynamic obstacle intersects the static
-                    for static in self.statics:
-                        # if there is an intersection, then continue
-                        if dynamic_obs.intersects(static):
-                            continue
                     # append the dynamic obstacle to the list
                     self.dynamics.append(dynamic_obs)
                     break
@@ -473,29 +470,29 @@ class Obstacles:
 
 
 # MAIN SCRIPT
-no_dynamics = 1
+no_dynamics = 2
 dyn_speeds = 1
-dyn_size_x = [1,1]
-dyn_size_y = [1,1]
+dyn_size_x = [1,2]
+dyn_size_y = [1,2]
 no_statics = 4
-static_size_x = [2,5]
-static_size_y = [2,5]
+static_size_x = [2,4]
+static_size_y = [2,4]
 obs = Obstacles(no_dynamics, dyn_speeds, dyn_size_x, dyn_size_y, no_statics, static_size_x, static_size_y)
 start = [0,0]
 goal = [10,10]
-xbounds = [0,20]
-ybounds = [0,15]
+xbounds = [0,10]
+ybounds = [0,10]
 static_obs = obs.create_statics(xbounds, ybounds, start, goal)
 dynamic_obs = obs.create_dynamics(xbounds, ybounds, start, goal)
 # number of samples and radius of connectivity
 n = 500
-r = 0.5
+r = 1
 # probability of reaching goal
 p_goal = 0.05
 # set eps
 eps = 0.1
 # set the robot and obstacle speeds [m/s]
-speed = 0.5
+speed = 4
 
 
 
@@ -509,4 +506,10 @@ rrt = RRT_Algorithm(n, r, p_goal, eps, xbounds, ybounds, start, goal, speed, sta
 rrt.plotting(nodes, total_cost)
 # update the motion by propagating the robot position
 rrt.motion_updater()
+# now plot the gif from all the images created
+# folder = 'pics'
+# files = [f"{folder}\\{file}" for file in os.listdir(folder)]
+#
+# images = [imageio.imread(file) for file in files]
+# imageio.mimwrite('movie.gif', images, fps=1)
 
