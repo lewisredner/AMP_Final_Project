@@ -474,7 +474,7 @@ no_dynamics = 2
 dyn_speeds = 1
 dyn_size_x = [1,2]
 dyn_size_y = [1,2]
-no_statics = 4
+no_statics = 6
 static_size_x = [2,4]
 static_size_y = [2,4]
 obs = Obstacles(no_dynamics, dyn_speeds, dyn_size_x, dyn_size_y, no_statics, static_size_x, static_size_y)
@@ -486,15 +486,13 @@ static_obs = obs.create_statics(xbounds, ybounds, start, goal)
 dynamic_obs = obs.create_dynamics(xbounds, ybounds, start, goal)
 # number of samples and radius of connectivity
 n = 500
-r = 1
+r = 0.5
 # probability of reaching goal
 p_goal = 0.05
 # set eps
 eps = 0.1
 # set the robot and obstacle speeds [m/s]
 speed = 4
-
-
 
 # instantiate the solving class
 rrt = RRT_Algorithm(n, r, p_goal, eps, xbounds, ybounds, start, goal, speed, static_obs, dynamic_obs, obs)
